@@ -1,0 +1,203 @@
+local util = require('easyhl.util')
+
+local M = {}
+
+-- Window-local state storage
+-- Using vim.w for window-local variables
+
+---Initialize window-local highlight state
+local function init_win_state()
+  if vim.w.ex_hl_match_ids == nil then
+    vim.w.ex_hl_match_ids = { 0, 0, 0, 0, 0 }
+  end
+  if vim.w.ex_hl_text == nil then
+    vim.w.ex_hl_text = { '', '', '', '', '' }
+  end
+end
+
+---Reset highlight for a label
+---@param label number 1-4
+local function reset_label(label)
+  local match_ids = vim.w.ex_hl_match_ids
+  if match_ids and match_ids[label] and match_ids[label] ~= 0 then
+    pcall(vim.fn.matchdelete, match_ids[label])
+  end
+  -- Update match_ids table and write back
+  match_ids[label] = 0
+  vim.w.ex_hl_match_ids = match_ids
+  -- Update text table and write back
+  local texts = vim.w.ex_hl_text
+  texts[label] = ''
+  vim.w.ex_hl_text = texts
+  vim.fn.setreg(util.reg_map[label], '')
+end
+
+---Define highlight groups
+function M.define_highlights()
+  local config = require('easyhl.config').config
+
+  local default_highlights = {
+    EasyHLLabel1 = { bg = 'LightCyan' },
+    EasyHLLabel2 = { bg = 'LightMagenta' },
+    EasyHLLabel3 = { bg = 'LightRed' },
+    EasyHLLabel4 = { bg = 'LightGreen' },
+  }
+
+  -- Apply defaults with default=true (won't override existing)
+  for name, opts in pairs(default_highlights) do
+    vim.api.nvim_set_hl(0, name, vim.tbl_extend('force', opts, { default = true }))
+  end
+
+  -- Apply user-defined colors (will always override)
+  for name, opts in pairs(config.colors or {}) do
+    vim.api.nvim_set_hl(0, name, opts)
+  end
+end
+
+---Highlight word under cursor
+---@param label number 1-4
+function M.highlight_word(label)
+  if not util.is_valid_label(label) then
+    vim.notify('EasyHL: Invalid label ' .. label .. '. Must be 1-4.', vim.log.levels.ERROR)
+    return
+  end
+
+  local word = util.get_cword()
+  if word == '' then
+    return
+  end
+
+  local pattern = util.make_word_pattern(word)
+  M.highlight_text(label, pattern)
+end
+
+---Highlight text with pattern
+---@param label number 1-4
+---@param pattern string
+function M.highlight_text(label, pattern)
+  if not util.is_valid_label(label) then
+    vim.notify('EasyHL: Invalid label ' .. label .. '. Must be 1-4.', vim.log.levels.ERROR)
+    return
+  end
+
+  init_win_state()
+
+  -- If no pattern, cancel highlight
+  if pattern == '' then
+    M.clear(label)
+    return
+  end
+
+  -- Add case-insensitivity if no uppercase
+  local final_pattern = util.maybe_add_casefold(pattern)
+  local texts = vim.w.ex_hl_text
+
+  -- Toggle off if same pattern
+  if final_pattern == texts[label] then
+    M.clear(label)
+    return
+  end
+
+  -- Clear existing and create new
+  reset_label(label)
+  local match_ids = vim.w.ex_hl_match_ids
+  match_ids[label] = vim.fn.matchadd(util.get_hl_group(label), final_pattern, label)
+  vim.w.ex_hl_match_ids = match_ids
+  texts[label] = final_pattern
+  vim.w.ex_hl_text = texts
+
+  -- Store in register
+  local reg_pattern = pattern
+  -- Labels 2 and 4: strip word boundaries for register
+  if label == 2 or label == 4 then
+    reg_pattern = util.strip_word_boundaries(pattern)
+  end
+  vim.fn.setreg(util.reg_map[label], reg_pattern)
+end
+
+---Highlight visual selection range
+---@param label number 1-4
+function M.highlight_range(label)
+  if not util.is_valid_label(label) then
+    vim.notify('EasyHL: Invalid label ' .. label .. '. Must be 1-4.', vim.log.levels.ERROR)
+    return
+  end
+
+  init_win_state()
+
+  -- Get visual selection info
+  local pos = vim.fn.getpos('v')
+  local start_line = pos[2]
+  pos = vim.fn.getpos('.')
+  local end_line = pos[2]
+
+  -- Ensure start <= end
+  if start_line > end_line then
+    start_line, end_line = end_line, start_line
+  end
+
+  local pattern
+  if start_line == end_line then
+    -- Same line: get visual selection text
+    local ok, text = pcall(function()
+      local reg_save = vim.fn.getreg('a')
+      local regtype_save = vim.fn.getregtype('a')
+      vim.cmd('silent normal! gv"ay')
+      local sel = vim.fn.getreg('a')
+      vim.fn.setreg('a', reg_save, regtype_save)
+      return sel
+    end)
+    if ok and text and text ~= '' then
+      pattern = text
+    else
+      -- Fallback to column-based pattern
+      local start_col = vim.fn.col("'<")
+      local end_col = vim.fn.col("'>")
+      pattern = string.format(
+        '\\%%>%dl\\%%>%dv\\%%<%dl\\%%<%dv',
+        start_line - 1,
+        start_col - 1,
+        end_line + 1,
+        end_col + 1
+      )
+    end
+  else
+    -- Multi-line: use line-based pattern
+    pattern = string.format('\\%%>%dl\\%%<%dl', start_line - 1, end_line + 1)
+  end
+
+  M.highlight_text(label, pattern)
+end
+
+---Clear highlight for a label
+---@param label number 0-4 (0 = clear all)
+function M.clear(label)
+  init_win_state()
+
+  if label == 0 then
+    for i = 1, 4 do
+      reset_label(i)
+    end
+  else
+    if not util.is_valid_label(label) then
+      vim.notify('EasyHL: Invalid label ' .. label .. '. Must be 0-4.', vim.log.levels.ERROR)
+      return
+    end
+    reset_label(label)
+  end
+end
+
+---Clear all highlights
+function M.clear_all()
+  M.clear(0)
+end
+
+---Get current highlight text for a label
+---@param label number 1-4
+---@return string|nil
+function M.get_hl_text(label)
+  init_win_state()
+  return vim.w.ex_hl_text[label]
+end
+
+return M
