@@ -35,7 +35,7 @@ The project targets:
 - `tests/`
   - busted tests
 
-## Behavior rules
+## Current behavior snapshot
 
 Current intended default behavior:
 
@@ -45,15 +45,31 @@ Current intended default behavior:
   - pressing a different label on the same word moves that word highlight to the new label
 - Visual mode:
   - `<Leader>1`..`<Leader>4` highlight the visual selection
+  - single-line characterwise selections use a literal pattern highlight
+  - multi-line characterwise selections use position-based highlights
+  - blockwise selections use position-based highlights per line
+  - linewise selections use a whole-line pattern range
   - visual highlights overwrite the target label and do **not** toggle
-- `<Leader>0` clears all highlights
-- Pattern highlighting via commands/API keeps same-pattern toggle behavior
+- Pattern highlighting:
+  - available via `:Easyhl hl1`..`hl4`, legacy `:HL1`..`:HL4`, `<Plug>(EasyhlHL1-4)`, and Lua API
+  - applying the same pattern to the same label toggles it off
+  - empty pattern clears the label
+  - patterns without uppercase are prefixed with `\c`
+- Clearing:
+  - `<Leader>0` clears all highlights
+  - `:Easyhl cancel {label}` and `:EasyhlCancel {label}` clear one label
+  - label `0` clears all highlights
+- Replace workflow:
+  - `<Leader>sub` uses registers from label 1 and label 2 in substitute commands
+  - default mapping is normal `:%s/<c-r>q/<c-r>w/g<CR><c-o>` and visual `:s/<c-r>q/<c-r>w/g<CR><c-o>`
 
 Important implementation detail:
 
+- Highlight state is window-local (`vim.w`)
 - Word toggle/move logic only compares against other highlights with `kind == 'word'`
 - Word highlighting does **not** try to reason about overlap with visual or pattern highlights
-- Highlight state is window-local (`vim.w`)
+- Position-based visual highlights store serialized positions in `vim.w.ex_hl_text[label]`
+- Label 2 and label 4 strip `\<\C` / `\>` word boundaries before writing to registers
 
 Current label/register mapping in `lua/easyhl/util.lua`:
 
@@ -61,6 +77,41 @@ Current label/register mapping in `lua/easyhl/util.lua`:
 - label 2 -> register `w`
 - label 3 -> register `e`
 - label 4 -> register `r`
+
+## Public surface
+
+Commands:
+
+- `:Easyhl word {label}`
+- `:Easyhl range {label}`
+- `:Easyhl cancel {label}`
+- `:Easyhl hl1 [{pattern}]`
+- `:Easyhl hl2 [{pattern}]`
+- `:Easyhl hl3 [{pattern}]`
+- `:Easyhl hl4 [{pattern}]`
+- legacy: `:EasyhlWord`, `:EasyhlCancel`, `:EasyhlRange`, `:HL1`..`:HL4`
+
+`<Plug>` mappings:
+
+- normal: `<Plug>(EasyhlWord1-4)`
+- visual: `<Plug>(EasyhlRange1-4)`
+- normal clear: `<Plug>(EasyhlCancel1-4)`, `<Plug>(EasyhlCancelAll)`
+- normal pattern prompt: `<Plug>(EasyhlHL1-4)`
+
+Lua API in `lua/easyhl/init.lua`:
+
+- `setup(opts)`
+- `highlight_word(label)`
+- `highlight_text(label, pattern)`
+- `highlight_range(label)`
+- `clear(label)`
+- `clear_all()`
+- `get_hl_text(label)`
+
+Config in `lua/easyhl/config.lua`:
+
+- `setup({ colors = { ... } })`
+- currently only `colors` is supported
 
 ## Working rules
 
@@ -71,6 +122,7 @@ Current label/register mapping in `lua/easyhl/util.lua`:
 - If changing user-visible behavior, update both:
   - `README.md`
   - `doc/easyhl.txt`
+- If changing agent-facing behavior snapshot or public surface, update `AGENTS.md` too.
 - If changing core logic in `lua/easyhl/highlight.lua`, add or update busted tests.
 
 ## Commands
@@ -101,6 +153,7 @@ When adding tests for new behavior, prioritize:
 - visual overwrite behavior
 - pattern toggle behavior
 - clear/reset behavior
+- multiline, blockwise, and linewise range handling
 
 ## Safety / ask first
 
@@ -119,6 +172,7 @@ Ask before doing any of the following:
 - Reuse helper functions and shared state transitions instead of duplicating logic.
 - Store explicit metadata when behavior depends on highlight origin/type.
 - Favor predictable behavior over overly clever cross-mode inference.
+- Keep README and vimdoc aligned with actual command and mapping behavior.
 
 ## When stuck
 

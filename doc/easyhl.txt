@@ -4,7 +4,7 @@ Author:         Johnny Wu <karasaya@gmail.com>
 Licence:        MIT licence
 Homepage:       https://github.com/jwu/easyhl.nvim
 Version:        2.0.0
-Last Change:    2025 Feb 13
+Last Change:    2026 Apr 27
 
 ==============================================================================
 Contents                                            *easyhl* *easyhl-contents*
@@ -18,21 +18,25 @@ Contents                                            *easyhl* *easyhl-contents*
          4. Configuration ................... |easyhl-configuration|
               Highlight colours ............. |easyhl-highlighting|
          5. Lua API ......................... |easyhl-api|
-         6. Migration from v1.x ............. |easyhl-migration|
+         6. Notes ........................... |easyhl-notes|
          7. Troubleshooting ................. |easyhl-issues|
 
 ==============================================================================
 1. Intro                                                        *easyhl-intro*
 
-EasyHL is a Neovim plugin for temporary highlighting of words and text ranges.
-It supports up to 4 concurrent highlight labels, each with a distinct color.
+EasyHL is a Neovim plugin for temporary, window-local highlighting of words,
+visual selections, and patterns. It supports up to 4 concurrent highlight
+labels, each with a distinct color.
 
 Features:
 - Highlight words under cursor
-- Highlight visual selections
-- Pattern-based highlighting
+- Highlight visual selections, including multi-line, blockwise, and linewise
+  selections
+- Highlight arbitrary Vim patterns
 - Register integration for search/replace workflows
+- <Plug> mappings for custom keybindings
 - Full Lua API
+- :checkhealth easyhl support
 
 ==============================================================================
 2. Requirements                                          *easyhl-requirements*
@@ -51,25 +55,45 @@ Pressing the same label on the same word toggles that word highlight off.
 Pressing a different label on the same word moves the word highlight to the
 new label.
 
+Word highlighting is window-local.
+
 Highlight visual selection ~
 
 Select text in visual mode and press <Leader>1, <Leader>2, <Leader>3, or
 <Leader>4.
 
-Single-line visual selections are highlighted as literal text patterns.
-Multi-line characterwise and blockwise selections are highlighted as precise
-ranges. Visual-line selections are highlighted as whole-line ranges.
+Single-line characterwise selections are highlighted as literal text patterns.
+Multi-line characterwise selections are highlighted as exact positions.
+Blockwise selections are highlighted as exact positions per line.
+Linewise selections are highlighted as whole-line ranges.
+
 Visual highlights always overwrite the target label and do not toggle.
 
-Cancel highlight words ~
+Highlight a pattern ~
 
-Press <Leader>0 to cancel all highlights. For individual labels, use
-:EasyhlCancel {label} or custom mappings to <Plug>(EasyhlCancel1-4).
+Use commands, <Plug> mappings, or the Lua API to highlight a Vim pattern.
+
+Applying the same pattern to the same label toggles it off. Patterns without
+uppercase letters are matched case-insensitively. Patterns with uppercase
+letters keep their original case-sensitive behavior.
+
+Cancel highlights ~
+
+Press <Leader>0 to clear all highlights. For individual labels, use
+:Easyhl cancel {label}, :EasyhlCancel {label}, or custom mappings to
+<Plug>(EasyhlCancel1-4).
 
 Replace highlighted words ~
 
-When you have both Label 1 and Label 2 highlighted, press <Leader>sub to
-replace all Label 1 words with Label 2 words.
+When default mappings are enabled, <Leader>sub runs a substitute using
+register q as the search text and register w as the replacement text.
+
+Label/register mapping: >
+    1 -> q
+    2 -> w
+    3 -> e
+    4 -> r
+<
 
 ------------------------------------------------------------------------------
 COMMANDS                                                     *easyhl-commands*
@@ -80,28 +104,32 @@ COMMANDS                                                     *easyhl-commands*
     Subcommands:
       word {label}      Highlight word under cursor
       range {label}     Highlight visual selection
-      cancel {label}    Cancel highlight (0 = all)
-      hl1 {pattern}     Highlight pattern with label 1
-      hl2 {pattern}     Highlight pattern with label 2
-      hl3 {pattern}     Highlight pattern with label 3
-      hl4 {pattern}     Highlight pattern with label 4
+      cancel {label}    Clear highlight (0 = all)
+      hl1 [{pattern}]   Highlight pattern with label 1
+      hl2 [{pattern}]   Highlight pattern with label 2
+      hl3 [{pattern}]   Highlight pattern with label 3
+      hl4 [{pattern}]   Highlight pattern with label 4
 
     Examples: >
       :Easyhl word 1
+      :Easyhl range 2
       :Easyhl cancel 0
       :Easyhl hl1 TODO
+      :Easyhl hl1
 <
+
+    Omitting {pattern} for hl1-hl4 clears that label.
 
 Legacy commands (backward compatible): ~
 
 :EasyhlWord {label}                                             *:EasyhlWord*
-    Highlight words under cursor by label {label} (1-4).
+    Highlight word under cursor with label {label} (1-4).
 
 :EasyhlCancel {label}                                          *:EasyhlCancel*
-    Cancel highlight label {label} (0-4, where 0 clears all).
+    Clear highlight label {label} (0-4, where 0 clears all).
 
 :[range]EasyhlRange {label}                                    *:EasyhlRange*
-    Highlight visual selected text by label {label} (1-4).
+    Highlight current visual selection with label {label} (1-4).
 
 :HL1 [{pattern}]                                                      *:HL1*
     Highlight {pattern} with label 1. No pattern clears label 1.
@@ -128,9 +156,10 @@ Default key mappings (can be disabled with `g:easyhl_no_mappings = 1`):
                highlight visual selection with label 3 in visual mode
 <Leader>4      Highlight/toggle current word with label 4 in normal mode;
                highlight visual selection with label 4 in visual mode
-<Leader>0      Cancel all highlights
+<Leader>0      Clear all highlights
 
-<Leader>sub    Replace label 1 words with label 2 words (normal and visual mode)
+<Leader>sub    Replace label 1 matches with label 2 text using registers
+               q and w (normal and visual mode)
 
 ------------------------------------------------------------------------------
 <PLUG> MAPPINGS                                         *easyhl-plug-mappings*
@@ -142,11 +171,15 @@ Normal Mode ~
     <Plug>(EasyhlWord2)     Highlight/toggle word with label 2
     <Plug>(EasyhlWord3)     Highlight/toggle word with label 3
     <Plug>(EasyhlWord4)     Highlight/toggle word with label 4
-    <Plug>(EasyhlCancel1)   Cancel highlight label 1
-    <Plug>(EasyhlCancel2)   Cancel highlight label 2
-    <Plug>(EasyhlCancel3)   Cancel highlight label 3
-    <Plug>(EasyhlCancel4)   Cancel highlight label 4
-    <Plug>(EasyhlCancelAll) Cancel all highlights
+    <Plug>(EasyhlCancel1)   Clear highlight label 1
+    <Plug>(EasyhlCancel2)   Clear highlight label 2
+    <Plug>(EasyhlCancel3)   Clear highlight label 3
+    <Plug>(EasyhlCancel4)   Clear highlight label 4
+    <Plug>(EasyhlCancelAll) Clear all highlights
+    <Plug>(EasyhlHL1)       Prompt for a pattern and highlight label 1
+    <Plug>(EasyhlHL2)       Prompt for a pattern and highlight label 2
+    <Plug>(EasyhlHL3)       Prompt for a pattern and highlight label 3
+    <Plug>(EasyhlHL4)       Prompt for a pattern and highlight label 4
 
 Visual Mode ~
     <Plug>(EasyhlRange1)    Highlight selection with label 1
@@ -154,15 +187,11 @@ Visual Mode ~
     <Plug>(EasyhlRange3)    Highlight selection with label 3
     <Plug>(EasyhlRange4)    Highlight selection with label 4
 
-Pattern Highlight ~
-    <Plug>(EasyhlHL1)       Highlight pattern with label 1 (prompts for input)
-    <Plug>(EasyhlHL2)       Highlight pattern with label 2 (prompts for input)
-    <Plug>(EasyhlHL3)       Highlight pattern with label 3 (prompts for input)
-    <Plug>(EasyhlHL4)       Highlight pattern with label 4 (prompts for input)
-
 Example configuration: >
     vim.keymap.set('n', '<leader>h1', '<Plug>(EasyhlWord1)')
     vim.keymap.set('v', '<leader>h1', '<Plug>(EasyhlRange1)')
+    vim.keymap.set('n', '<leader>p1', '<Plug>(EasyhlHL1)')
+<
 
 ==============================================================================
 4. Configuration                                        *easyhl-configuration*
@@ -173,6 +202,7 @@ Default: 0
 
 Set to 1 to disable default key mappings. >
     let g:easyhl_no_mappings = 1
+<
 
 ------------------------------------------------------------------------------
 HIGHLIGHT COLOURS                                        *easyhl-highlighting*
@@ -187,9 +217,11 @@ Default highlight groups: >
     EasyHLLabel3      Label 3 (LightRed background)
     *EasyHLLabel4*
     EasyHLLabel4      Label 4 (LightGreen background)
+<
 
 Customize via Vim syntax: >
     hi EasyHLLabel1 guibg=Yellow ctermbg=Yellow
+<
 
 Or via Lua setup(): >
     require('easyhl').setup({
@@ -198,17 +230,19 @@ Or via Lua setup(): >
         EasyHLLabel2 = { fg = 'White', bg = 'Blue' },
       },
     })
+<
 
 The `colors` option accepts a table where keys are highlight group names
-and values are tables with highlight attributes (fg, bg, gui, etc.).
+and values are tables with highlight attributes accepted by
+|nvim_set_hl()|.
 
 ==============================================================================
 5. Lua API                                                         *easyhl-api*
 
-The plugin exposes a full Lua API for programmatic use.
+The plugin exposes a Lua API for programmatic use.
 
 require('easyhl').setup({config})                        *easyhl.setup()*
-    Configure the plugin with user options.
+    Configure the plugin.
     {config} table with fields:
       - colors: (table) custom highlight groups
 
@@ -217,9 +251,9 @@ require('easyhl').highlight_word({label})          *easyhl.highlight_word()*
     {label} number 1-4
 
 require('easyhl').highlight_text({label}, {pattern})  *easyhl.highlight_text()*
-    Highlight text matching a pattern.
+    Highlight text matching a Vim pattern.
     {label} number 1-4
-    {pattern} string Vim search pattern
+    {pattern} string; empty string clears the label
 
 require('easyhl').highlight_range({label})          *easyhl.highlight_range()*
     Highlight the current visual selection.
@@ -233,33 +267,26 @@ require('easyhl').clear_all()                         *easyhl.clear_all()*
     Clear all highlights.
 
 require('easyhl').get_hl_text({label})              *easyhl.get_hl_text()*
-    Get the current pattern for a label.
+    Get the stored match string for a label.
     {label} number 1-4
     Returns: string|nil
 
 Example: >
-    -- Highlight "TODO" with label 1
-    require('easyhl').highlight_text(1, 'TODO')
-
-    -- Clear all highlights
+    require('easyhl').highlight_word(1)
+    require('easyhl').highlight_text(2, 'TODO')
     require('easyhl').clear_all()
+<
 
 ==============================================================================
-6. Migration from v1.x                                     *easyhl-migration*
+6. Notes                                                        *easyhl-notes*
 
-The v2.0 Lua rewrite maintains backward compatibility for most use cases.
-
-API Migration: >
-
-    Old                           New
-    --------------------------    --------------------------
-    :EasyhlWord 1                 :Easyhl word 1
-    :EasyhlCancel 1               :Easyhl cancel 1
-    :EasyhlRange 1                :Easyhl range 1
-    :HL1 pattern                  :Easyhl hl1 pattern
-
-Legacy commands (:EasyhlWord, :EasyhlCancel, :EasyhlRange, :HL1-4) are still
-available for backward compatibility.
+- Highlight state is stored per window.
+- Word toggle/move logic only compares against other highlights created as
+  words. It does not try to resolve overlaps with visual or pattern
+  highlights.
+- `get_hl_text()` returns the stored match string. For position-based visual
+  highlights, this is an internal serialized position string rather than the
+  original selected text.
 
 ==============================================================================
 7. Troubleshooting                                         *easyhl-issues*
@@ -268,9 +295,10 @@ Run :checkhealth easyhl to diagnose common issues.
 
   :checkhealth easyhl
 
-If highlights disappear after changing colorscheme, the plugin will
+If highlights disappear after changing colorscheme, EasyHL will
 automatically redefine highlight groups. If issues persist, run: >
     :lua require('easyhl.highlight').define_highlights()
+<
 
 ==============================================================================
 vim: tw=78 ts=2 sw=2 sts=2 et ft=help
