@@ -191,7 +191,7 @@ function M.highlight_range(label)
     local text = ok and table.concat(chunks, '\n') or ''
 
     if text ~= '' then
-      pattern = text
+      pattern = util.make_literal_pattern(text)
     else
       -- Fallback to column-based pattern
       pattern = string.format(

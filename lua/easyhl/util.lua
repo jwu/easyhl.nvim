@@ -38,6 +38,13 @@ function M.make_word_pattern(word)
   return '\\<\\C' .. word .. '\\>'
 end
 
+---Create a literal Vim pattern from plain text
+---@param text string
+---@return string
+function M.make_literal_pattern(text)
+  return '\\V' .. text:gsub('\\', '\\\\')
+end
+
 ---Check if pattern has uppercase characters
 ---@param pattern string
 ---@return boolean

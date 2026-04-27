@@ -64,7 +64,7 @@ describe('easyhl.highlight', function()
     env.state.positions.dot = { 0, 1, 3, 0 }
 
     highlight.highlight_range(1)
-    assert.are.equal('\\cfoo', highlight.get_hl_text(1))
+    assert.are.equal('\\Vfoo', highlight.get_hl_text(1))
 
     env.state.current_word = 'foo'
     highlight.highlight_word(1)
@@ -80,7 +80,7 @@ describe('easyhl.highlight', function()
 
     highlight.highlight_range(1)
     local first_pattern = highlight.get_hl_text(1)
-    assert.are.equal('\\cfoo', first_pattern)
+    assert.are.equal('\\Vfoo', first_pattern)
 
     highlight.highlight_range(1)
     assert.are.equal(first_pattern, highlight.get_hl_text(1))
@@ -112,13 +112,13 @@ describe('easyhl.highlight', function()
     env.state.positions.dot = { 0, 1, 5, 0 }
 
     highlight.highlight_range(1)
-    assert.are.equal('\\calpha', highlight.get_hl_text(1))
+    assert.are.equal('\\Valpha', highlight.get_hl_text(1))
 
     env.state.positions.v = { 0, 1, 7, 0 }
     env.state.positions.dot = { 0, 1, 10, 0 }
     highlight.highlight_range(1)
 
-    assert.are.equal('\\cbeta', highlight.get_hl_text(1))
+    assert.are.equal('\\Vbeta', highlight.get_hl_text(1))
   end)
 
   it('clears the label when the cursor is on whitespace', function()
@@ -152,6 +152,28 @@ describe('easyhl.highlight', function()
 
     assert.are.equal('', highlight.get_hl_text(1))
     assert.are.equal('', env.state.registers.q)
+  end)
+
+  it('treats single-line visual selections as literal patterns', function()
+    env.state.buffer_text = { 'a.b' }
+    env.state.positions.v = { 0, 1, 1, 0 }
+    env.state.positions.dot = { 0, 1, 3, 0 }
+
+    highlight.highlight_range(1)
+
+    assert.are.equal('\\Va.b', highlight.get_hl_text(1))
+    assert.are.equal('\\Va.b', env.state.registers.q)
+  end)
+
+  it('escapes backslashes in single-line visual selections', function()
+    env.state.buffer_text = { 'a\\b' }
+    env.state.positions.v = { 0, 1, 1, 0 }
+    env.state.positions.dot = { 0, 1, 3, 0 }
+
+    highlight.highlight_range(1)
+
+    assert.are.equal('\\Va\\\\b', highlight.get_hl_text(1))
+    assert.are.equal('\\Va\\\\b', env.state.registers.q)
   end)
 
   it('keeps pattern highlighting toggle behavior', function()
