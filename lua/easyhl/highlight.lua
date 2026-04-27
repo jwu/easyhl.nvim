@@ -25,24 +25,41 @@ local function reset_label(label)
   if match_ids and match_ids[label] and match_ids[label] ~= 0 then
     pcall(vim.fn.matchdelete, match_ids[label])
   end
-  -- Update match_ids table and write back
   match_ids[label] = 0
   vim.w.ex_hl_match_ids = match_ids
-  -- Update text table and write back
+
   local texts = vim.w.ex_hl_text
   texts[label] = ''
   vim.w.ex_hl_text = texts
+
   local meta = vim.w.ex_hl_meta
   meta[label] = false
   vim.w.ex_hl_meta = meta
+
   vim.fn.setreg(util.reg_map[label], '')
 end
 
----Apply a highlight to a label
+---@param start_line number
+---@param end_line number
+---@return string[]
+local function get_buffer_lines(start_line, end_line)
+  return vim.api.nvim_buf_get_lines(0, start_line - 1, end_line, false)
+end
+
+---@param positions integer[][]
+---@return string
+local function serialize_positions(positions)
+  local parts = {}
+  for _, pos in ipairs(positions) do
+    parts[#parts + 1] = string.format('%d:%d:%d', pos[1], pos[2], pos[3])
+  end
+  return table.concat(parts, '|')
+end
+
 ---@param label number 1-4
 ---@param pattern string
----@param opts? { kind?: string, source?: string, toggle?: boolean }
-local function apply_highlight(label, pattern, opts)
+---@param opts? { kind?: string, source?: string, toggle?: boolean, reg_pattern?: string }
+local function apply_pattern_highlight(label, pattern, opts)
   opts = opts or {}
 
   if pattern == '' then
@@ -74,11 +91,112 @@ local function apply_highlight(label, pattern, opts)
   }
   vim.w.ex_hl_meta = meta
 
-  local reg_pattern = pattern
+  local reg_pattern = opts.reg_pattern or pattern
   if label == 2 or label == 4 then
-    reg_pattern = util.strip_word_boundaries(pattern)
+    reg_pattern = util.strip_word_boundaries(reg_pattern)
   end
   vim.fn.setreg(util.reg_map[label], reg_pattern)
+end
+
+---@param label number 1-4
+---@param positions integer[][]
+---@param opts? { kind?: string, source?: string, reg_pattern?: string }
+local function apply_pos_highlight(label, positions, opts)
+  opts = opts or {}
+
+  if #positions == 0 then
+    M.clear(label)
+    return
+  end
+
+  reset_label(label)
+
+  local match_ids = vim.w.ex_hl_match_ids
+  match_ids[label] = vim.fn.matchaddpos(util.get_hl_group(label), positions, label)
+  vim.w.ex_hl_match_ids = match_ids
+
+  local texts = vim.w.ex_hl_text
+  texts[label] = opts.source or serialize_positions(positions)
+  vim.w.ex_hl_text = texts
+
+  local meta = vim.w.ex_hl_meta
+  meta[label] = {
+    kind = opts.kind or 'range',
+    source = opts.source or texts[label],
+  }
+  vim.w.ex_hl_meta = meta
+
+  local reg_pattern = opts.reg_pattern or ''
+  vim.fn.setreg(util.reg_map[label], reg_pattern)
+end
+
+---@param start_line number
+---@param start_col number
+---@param end_line number
+---@param end_col number
+---@return integer[][], string
+local function build_charwise_multiline_positions(start_line, start_col, end_line, end_col)
+  local lines = get_buffer_lines(start_line, end_line)
+  local positions = {}
+  local chunks = {}
+
+  local first_line = lines[1] or ''
+  if #first_line >= start_col then
+    local len = #first_line - start_col + 1
+    positions[#positions + 1] = { start_line, start_col, len }
+    chunks[#chunks + 1] = first_line:sub(start_col)
+  else
+    chunks[#chunks + 1] = ''
+  end
+
+  for lnum = start_line + 1, end_line - 1 do
+    local line = lines[lnum - start_line + 1] or ''
+    if #line > 0 then
+      positions[#positions + 1] = { lnum, 1, #line }
+    end
+    chunks[#chunks + 1] = line
+  end
+
+  local last_line = lines[#lines] or ''
+  local last_col = math.min(end_col, #last_line)
+  if last_col > 0 then
+    positions[#positions + 1] = { end_line, 1, last_col }
+    chunks[#chunks + 1] = last_line:sub(1, last_col)
+  else
+    chunks[#chunks + 1] = ''
+  end
+
+  return positions, table.concat(chunks, '\n')
+end
+
+---@param start_line number
+---@param start_col number
+---@param end_line number
+---@param end_col number
+---@return integer[][], string
+local function build_blockwise_positions(start_line, start_col, end_line, end_col)
+  local left_col = math.min(start_col, end_col)
+  local right_col = math.max(start_col, end_col)
+  local lines = get_buffer_lines(start_line, end_line)
+  local positions = {}
+  local chunks = {}
+
+  for idx, line in ipairs(lines) do
+    local lnum = start_line + idx - 1
+    if #line >= left_col then
+      local clipped_right = math.min(right_col, #line)
+      if clipped_right >= left_col then
+        positions[#positions + 1] = { lnum, left_col, clipped_right - left_col + 1 }
+        chunks[#chunks + 1] = line:sub(left_col, clipped_right)
+      else
+        chunks[#chunks + 1] = ''
+      end
+    else
+      chunks[#chunks + 1] = ''
+    end
+  end
+
+  return positions, table.concat(chunks, '\n')
 end
 
 ---Define highlight groups
@@ -92,12 +210,10 @@ function M.define_highlights()
     EasyHLLabel4 = { bg = 'LightGreen' },
   }
 
-  -- Apply defaults with default=true (won't override existing)
   for name, opts in pairs(default_highlights) do
     vim.api.nvim_set_hl(0, name, vim.tbl_extend('force', opts, { default = true }))
   end
 
-  -- Apply user-defined colors (will always override)
   for name, opts in pairs(config.colors or {}) do
     vim.api.nvim_set_hl(0, name, opts)
   end
@@ -141,7 +257,7 @@ function M.highlight_word(label)
   end
 
   local pattern = util.make_word_pattern(word)
-  apply_highlight(label, pattern, { kind = 'word', source = word, toggle = false })
+  apply_pattern_highlight(label, pattern, { kind = 'word', source = word, toggle = false })
 end
 
 ---Highlight text with pattern
@@ -154,7 +270,7 @@ function M.highlight_text(label, pattern)
   end
 
   init_win_state()
-  apply_highlight(label, pattern, { kind = 'pattern', source = pattern })
+  apply_pattern_highlight(label, pattern, { kind = 'pattern', source = pattern })
 end
 
 ---Highlight visual selection range
@@ -167,7 +283,10 @@ function M.highlight_range(label)
 
   init_win_state()
 
-  local visual_mode = vim.fn.visualmode()
+  local visual_mode = vim.fn.mode()
+  if visual_mode:sub(1, 1) == 'n' then
+    visual_mode = vim.fn.visualmode()
+  end
   local start_pos = vim.fn.getpos('v')
   local end_pos = vim.fn.getpos('.')
   local start_line = start_pos[2]
@@ -181,30 +300,35 @@ function M.highlight_range(label)
     start_col, end_col = end_col, start_col
   end
 
-  local pattern
-  if visual_mode == 'V' or start_line ~= end_line then
-    -- Linewise or multi-line visual selection: use line-based pattern
-    pattern = string.format('\\%%>%dl\\%%<%dl', start_line - 1, end_line + 1)
+  if visual_mode == 'V' then
+    local pattern = string.format('\\%%>%dl\\%%<%dl', start_line - 1, end_line + 1)
+    apply_pattern_highlight(label, pattern, { kind = 'range', source = pattern, toggle = false })
+  elseif visual_mode == '\022' then
+    local positions, text = build_blockwise_positions(start_line, start_col, end_line, end_col)
+    apply_pos_highlight(label, positions, { kind = 'range', source = serialize_positions(positions), reg_pattern = text })
+  elseif start_line ~= end_line then
+    local positions, text = build_charwise_multiline_positions(start_line, start_col, end_line, end_col)
+    apply_pos_highlight(label, positions, { kind = 'range', source = serialize_positions(positions), reg_pattern = text })
   else
-    -- Same-line character/block selection: read the current selection directly.
     local ok, chunks = pcall(vim.api.nvim_buf_get_text, 0, start_line - 1, start_col - 1, end_line - 1, end_col, {})
     local text = ok and table.concat(chunks, '\n') or ''
 
     if text ~= '' then
-      pattern = util.make_literal_pattern(text)
+      local pattern = util.make_literal_pattern(text)
+      apply_pattern_highlight(label, pattern, {
+        kind = 'range',
+        source = pattern,
+        toggle = false,
+        reg_pattern = pattern,
+      })
     else
-      -- Fallback to column-based pattern
-      pattern = string.format(
-        '\\%%>%dl\\%%>%dv\\%%<%dl\\%%<%dv',
-        start_line - 1,
-        start_col - 1,
-        end_line + 1,
-        end_col + 1
-      )
+      local positions = { { start_line, start_col, math.max(end_col - start_col + 1, 1) } }
+      apply_pos_highlight(label, positions, {
+        kind = 'range',
+        source = serialize_positions(positions),
+      })
     end
   end
-
-  apply_highlight(label, pattern, { kind = 'range', source = pattern, toggle = false })
 
   if vim.api and vim.api.nvim_input then
     vim.api.nvim_input('<Esc>')

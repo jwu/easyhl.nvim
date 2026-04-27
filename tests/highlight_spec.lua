@@ -98,12 +98,63 @@ describe('easyhl.highlight', function()
 
   it('uses line-based pattern for visual line mode', function()
     env.state.visual_mode = 'V'
+    env.state.mode = 'V'
     env.state.positions.v = { 0, 2, 1, 0 }
     env.state.positions.dot = { 0, 4, 1, 0 }
 
     highlight.highlight_range(1)
 
     assert.are.equal('\\c\\%>1l\\%<5l', highlight.get_hl_text(1))
+  end)
+
+  it('prefers the current mode for visual-line selection', function()
+    env.state.visual_mode = 'v'
+    env.state.mode = 'V'
+    env.state.positions.v = { 0, 2, 1, 0 }
+    env.state.positions.dot = { 0, 4, 1, 0 }
+
+    highlight.highlight_range(1)
+
+    assert.are.equal('\\c\\%>1l\\%<5l', highlight.get_hl_text(1))
+  end)
+
+  it('uses precise positions for multi-line charwise selections', function()
+    env.state.buffer_text = {
+      'alpha beta',
+      'middle line',
+      'gamma end',
+    }
+    env.state.positions.v = { 0, 1, 7, 0 }
+    env.state.positions.dot = { 0, 3, 5, 0 }
+
+    highlight.highlight_range(1)
+
+    local match = env.state.pos_matches[env.vim.w.ex_hl_match_ids[1]]
+    assert.are.same({
+      { 1, 7, 4 },
+      { 2, 1, 11 },
+      { 3, 1, 5 },
+    }, match.positions)
+  end)
+
+  it('uses precise positions for blockwise selections', function()
+    env.state.visual_mode = '\022'
+    env.state.buffer_text = {
+      'abcdef',
+      'ghijkl',
+      'mnopqr',
+    }
+    env.state.positions.v = { 0, 1, 2, 0 }
+    env.state.positions.dot = { 0, 3, 4, 0 }
+
+    highlight.highlight_range(1)
+
+    local match = env.state.pos_matches[env.vim.w.ex_hl_match_ids[1]]
+    assert.are.same({
+      { 1, 2, 3 },
+      { 2, 2, 3 },
+      { 3, 2, 3 },
+    }, match.positions)
   end)
 
   it('reads the current visual selection instead of reusing the previous one', function()

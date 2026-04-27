@@ -53,7 +53,8 @@ Move your cursor to a word and press:
 Select text in visual mode and press:
 - `<Leader>1` through `<Leader>4` to highlight the selection
 - Single-line visual selections are highlighted as literal text patterns
-- Multi-line and visual-line selections are highlighted as ranges
+- Multi-line characterwise and blockwise selections are highlighted as precise ranges
+- Visual-line selections are highlighted as whole-line ranges
 - Visual highlights always overwrite the target label and do not toggle
 
 ### Cancel Highlights

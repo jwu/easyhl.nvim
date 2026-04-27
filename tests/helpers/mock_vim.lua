@@ -24,6 +24,7 @@ function M.new(opts)
     registers = {},
     register_types = {},
     matches = {},
+    pos_matches = {},
     deleted_matches = {},
     notifications = {},
     commands = {},
@@ -76,9 +77,20 @@ function M.new(opts)
     return next_match_id
   end
 
+  function vim.fn.matchaddpos(group, positions, priority)
+    next_match_id = next_match_id + 1
+    state.pos_matches[next_match_id] = {
+      group = group,
+      positions = positions,
+      priority = priority,
+    }
+    return next_match_id
+  end
+
   function vim.fn.matchdelete(id)
     state.deleted_matches[id] = true
     state.matches[id] = nil
+    state.pos_matches[id] = nil
     return 1
   end
 
@@ -121,6 +133,10 @@ function M.new(opts)
     return state.visual_mode
   end
 
+  function vim.fn.mode()
+    return state.mode or state.visual_mode
+  end
+
   function vim.api.nvim_input(keys)
     table.insert(state.inputs, keys)
   end
@@ -142,6 +158,14 @@ function M.new(opts)
     end
 
     return chunks
+  end
+
+  function vim.api.nvim_buf_get_lines(_, start_row, end_row, _)
+    local lines = {}
+    for row = start_row + 1, end_row do
+      lines[#lines + 1] = state.buffer_text[row] or ''
+    end
+    return lines
   end
 
   return {

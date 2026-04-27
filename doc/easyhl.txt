@@ -57,7 +57,8 @@ Select text in visual mode and press <Leader>1, <Leader>2, <Leader>3, or
 <Leader>4.
 
 Single-line visual selections are highlighted as literal text patterns.
-Multi-line and visual-line selections are highlighted as ranges.
+Multi-line characterwise and blockwise selections are highlighted as precise
+ranges. Visual-line selections are highlighted as whole-line ranges.
 Visual highlights always overwrite the target label and do not toggle.
 
 Cancel highlight words ~
