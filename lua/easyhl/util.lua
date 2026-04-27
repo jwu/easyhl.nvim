@@ -17,6 +17,20 @@ function M.get_cword()
   return vim.fn.expand('<cword>')
 end
 
+---Check whether cursor is on a blank character or beyond end of line
+---@return boolean
+function M.is_blank_cursor()
+  local line = vim.fn.getline('.')
+  local col = vim.fn.col('.')
+
+  if line == '' or col <= 0 or col > #line then
+    return true
+  end
+
+  local char = line:sub(col, col)
+  return char:match('%s') ~= nil
+end
+
 ---Create word pattern (with word boundaries)
 ---@param word string
 ---@return string

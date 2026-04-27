@@ -9,10 +9,14 @@ function M.new(opts)
   local state = {
     current_word = opts.current_word or '',
     visual_text = opts.visual_text or '',
+    visual_mode = opts.visual_mode or 'v',
     positions = opts.positions or {
       v = { 0, 1, 1, 0 },
       dot = { 0, 1, 1, 0 },
+      ["'<"] = { 0, 1, 1, 0 },
+      ["'>"] = { 0, 1, 1, 0 },
     },
+    buffer_text = opts.buffer_text or { '' },
     cols = opts.cols or {
       ["'<"] = 1,
       ["'>"] = 1,
@@ -23,11 +27,13 @@ function M.new(opts)
     deleted_matches = {},
     notifications = {},
     commands = {},
+    inputs = {},
   }
 
   local vim = {
     w = {},
     fn = {},
+    api = {},
     log = {
       levels = {
         ERROR = 'ERROR',
@@ -48,6 +54,14 @@ function M.new(opts)
   function vim.fn.expand(expr)
     if expr == '<cword>' then
       return state.current_word
+    end
+    return ''
+  end
+
+  function vim.fn.getline(expr)
+    if expr == '.' then
+      local row = (state.positions.dot or { 0, 1, 1, 0 })[2]
+      return state.buffer_text[row] or ''
     end
     return ''
   end
@@ -84,17 +98,50 @@ function M.new(opts)
   end
 
   function vim.fn.getpos(mark)
-    if mark == 'v' then
-      return state.positions.v
-    end
     if mark == '.' then
-      return state.positions.dot
+      return state.positions.dot or { 0, 1, 1, 0 }
+    end
+    if mark == 'v' then
+      return state.positions.v or { 0, 1, 1, 0 }
+    end
+    if state.positions[mark] then
+      return state.positions[mark]
     end
     return { 0, 1, 1, 0 }
   end
 
   function vim.fn.col(mark)
+    if mark == '.' then
+      return (state.positions.dot or { 0, 1, 1, 0 })[3] or 1
+    end
     return state.cols[mark] or 1
+  end
+
+  function vim.fn.visualmode()
+    return state.visual_mode
+  end
+
+  function vim.api.nvim_input(keys)
+    table.insert(state.inputs, keys)
+  end
+
+  function vim.api.nvim_buf_get_text(_, start_row, start_col, end_row, end_col, _)
+    local chunks = {}
+
+    for row = start_row + 1, end_row + 1 do
+      local line = state.buffer_text[row] or ''
+      if start_row == end_row then
+        table.insert(chunks, line:sub(start_col + 1, end_col))
+      elseif row == start_row + 1 then
+        table.insert(chunks, line:sub(start_col + 1))
+      elseif row == end_row + 1 then
+        table.insert(chunks, line:sub(1, end_col))
+      else
+        table.insert(chunks, line)
+      end
+    end
+
+    return chunks
   end
 
   return {

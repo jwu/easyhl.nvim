@@ -113,8 +113,14 @@ function M.highlight_word(label)
 
   init_win_state()
 
+  if util.is_blank_cursor() then
+    M.clear(label)
+    return
+  end
+
   local word = util.get_cword()
   if word == '' then
+    M.clear(label)
     return
   end
 
@@ -161,34 +167,33 @@ function M.highlight_range(label)
 
   init_win_state()
 
-  -- Get visual selection info
-  local pos = vim.fn.getpos('v')
-  local start_line = pos[2]
-  pos = vim.fn.getpos('.')
-  local end_line = pos[2]
+  local visual_mode = vim.fn.visualmode()
+  local start_pos = vim.fn.getpos('v')
+  local end_pos = vim.fn.getpos('.')
+  local start_line = start_pos[2]
+  local end_line = end_pos[2]
+  local start_col = start_pos[3]
+  local end_col = end_pos[3]
 
-  -- Ensure start <= end
-  if start_line > end_line then
+  if start_line > end_line or (start_line == end_line and start_col > end_col) then
+    start_pos, end_pos = end_pos, start_pos
     start_line, end_line = end_line, start_line
+    start_col, end_col = end_col, start_col
   end
 
   local pattern
-  if start_line == end_line then
-    -- Same line: get visual selection text
-    local ok, text = pcall(function()
-      local reg_save = vim.fn.getreg('a')
-      local regtype_save = vim.fn.getregtype('a')
-      vim.cmd('silent normal! gv"ay')
-      local sel = vim.fn.getreg('a')
-      vim.fn.setreg('a', reg_save, regtype_save)
-      return sel
-    end)
-    if ok and text and text ~= '' then
+  if visual_mode == 'V' or start_line ~= end_line then
+    -- Linewise or multi-line visual selection: use line-based pattern
+    pattern = string.format('\\%%>%dl\\%%<%dl', start_line - 1, end_line + 1)
+  else
+    -- Same-line character/block selection: read the current selection directly.
+    local ok, chunks = pcall(vim.api.nvim_buf_get_text, 0, start_line - 1, start_col - 1, end_line - 1, end_col, {})
+    local text = ok and table.concat(chunks, '\n') or ''
+
+    if text ~= '' then
       pattern = text
     else
       -- Fallback to column-based pattern
-      local start_col = vim.fn.col("'<")
-      local end_col = vim.fn.col("'>")
       pattern = string.format(
         '\\%%>%dl\\%%>%dv\\%%<%dl\\%%<%dv',
         start_line - 1,
@@ -197,12 +202,13 @@ function M.highlight_range(label)
         end_col + 1
       )
     end
-  else
-    -- Multi-line: use line-based pattern
-    pattern = string.format('\\%%>%dl\\%%<%dl', start_line - 1, end_line + 1)
   end
 
   apply_highlight(label, pattern, { kind = 'range', source = pattern, toggle = false })
+
+  if vim.api and vim.api.nvim_input then
+    vim.api.nvim_input('<Esc>')
+  end
 end
 
 ---Clear highlight for a label

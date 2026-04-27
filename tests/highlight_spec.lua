@@ -30,6 +30,8 @@ describe('easyhl.highlight', function()
 
   it('toggles off the same word on the same label', function()
     env.state.current_word = 'foo'
+    env.state.buffer_text = { 'foo' }
+    env.state.positions.dot = { 0, 1, 1, 0 }
 
     highlight.highlight_word(1)
     assert.are.equal('\\<\\Cfoo\\>', highlight.get_hl_text(1))
@@ -42,6 +44,8 @@ describe('easyhl.highlight', function()
 
   it('moves a word highlight from another label', function()
     env.state.current_word = 'foo'
+    env.state.buffer_text = { 'foo' }
+    env.state.positions.dot = { 0, 1, 1, 0 }
 
     highlight.highlight_word(2)
     assert.are.equal('\\<\\Cfoo\\>', highlight.get_hl_text(2))
@@ -55,7 +59,9 @@ describe('easyhl.highlight', function()
   end)
 
   it('does not clear a range highlight when toggling a word on the same label', function()
-    env.state.visual_text = 'foo'
+    env.state.buffer_text = { 'foo' }
+    env.state.positions.v = { 0, 1, 1, 0 }
+    env.state.positions.dot = { 0, 1, 3, 0 }
 
     highlight.highlight_range(1)
     assert.are.equal('\\cfoo', highlight.get_hl_text(1))
@@ -68,7 +74,9 @@ describe('easyhl.highlight', function()
   end)
 
   it('reapplies the same range instead of toggling it off', function()
-    env.state.visual_text = 'foo'
+    env.state.buffer_text = { 'foo' }
+    env.state.positions.v = { 0, 1, 1, 0 }
+    env.state.positions.dot = { 0, 1, 3, 0 }
 
     highlight.highlight_range(1)
     local first_pattern = highlight.get_hl_text(1)
@@ -76,6 +84,74 @@ describe('easyhl.highlight', function()
 
     highlight.highlight_range(1)
     assert.are.equal(first_pattern, highlight.get_hl_text(1))
+  end)
+
+  it('exits visual mode after applying a range highlight', function()
+    env.state.buffer_text = { 'foo' }
+    env.state.positions.v = { 0, 1, 1, 0 }
+    env.state.positions.dot = { 0, 1, 3, 0 }
+
+    highlight.highlight_range(1)
+
+    assert.are.same({ '<Esc>' }, env.state.inputs)
+  end)
+
+  it('uses line-based pattern for visual line mode', function()
+    env.state.visual_mode = 'V'
+    env.state.positions.v = { 0, 2, 1, 0 }
+    env.state.positions.dot = { 0, 4, 1, 0 }
+
+    highlight.highlight_range(1)
+
+    assert.are.equal('\\c\\%>1l\\%<5l', highlight.get_hl_text(1))
+  end)
+
+  it('reads the current visual selection instead of reusing the previous one', function()
+    env.state.buffer_text = { 'alpha beta gamma' }
+    env.state.positions.v = { 0, 1, 1, 0 }
+    env.state.positions.dot = { 0, 1, 5, 0 }
+
+    highlight.highlight_range(1)
+    assert.are.equal('\\calpha', highlight.get_hl_text(1))
+
+    env.state.positions.v = { 0, 1, 7, 0 }
+    env.state.positions.dot = { 0, 1, 10, 0 }
+    highlight.highlight_range(1)
+
+    assert.are.equal('\\cbeta', highlight.get_hl_text(1))
+  end)
+
+  it('clears the label when the cursor is on whitespace', function()
+    env.state.current_word = 'foo'
+    env.state.buffer_text = { 'foo bar' }
+    env.state.positions.dot = { 0, 1, 1, 0 }
+
+    highlight.highlight_word(1)
+    assert.are.equal('\\<\\Cfoo\\>', highlight.get_hl_text(1))
+
+    env.state.current_word = ''
+    env.state.positions.dot = { 0, 1, 4, 0 }
+    highlight.highlight_word(1)
+
+    assert.are.equal('', highlight.get_hl_text(1))
+    assert.are.equal('', env.state.registers.q)
+  end)
+
+  it('clears the label when the cursor is on an empty line', function()
+    env.state.current_word = 'foo'
+    env.state.buffer_text = { 'foo' }
+    env.state.positions.dot = { 0, 1, 1, 0 }
+
+    highlight.highlight_word(1)
+    assert.are.equal('\\<\\Cfoo\\>', highlight.get_hl_text(1))
+
+    env.state.current_word = ''
+    env.state.buffer_text = { '' }
+    env.state.positions.dot = { 0, 1, 1, 0 }
+    highlight.highlight_word(1)
+
+    assert.are.equal('', highlight.get_hl_text(1))
+    assert.are.equal('', env.state.registers.q)
   end)
 
   it('keeps pattern highlighting toggle behavior', function()
