@@ -13,6 +13,9 @@ local function init_win_state()
   if vim.w.ex_hl_text == nil then
     vim.w.ex_hl_text = { '', '', '', '', '' }
   end
+  if vim.w.ex_hl_meta == nil then
+    vim.w.ex_hl_meta = { false, false, false, false, false }
+  end
 end
 
 ---Reset highlight for a label
@@ -29,7 +32,53 @@ local function reset_label(label)
   local texts = vim.w.ex_hl_text
   texts[label] = ''
   vim.w.ex_hl_text = texts
+  local meta = vim.w.ex_hl_meta
+  meta[label] = false
+  vim.w.ex_hl_meta = meta
   vim.fn.setreg(util.reg_map[label], '')
+end
+
+---Apply a highlight to a label
+---@param label number 1-4
+---@param pattern string
+---@param opts? { kind?: string, source?: string, toggle?: boolean }
+local function apply_highlight(label, pattern, opts)
+  opts = opts or {}
+
+  if pattern == '' then
+    M.clear(label)
+    return
+  end
+
+  local final_pattern = util.maybe_add_casefold(pattern)
+  local texts = vim.w.ex_hl_text
+
+  if opts.toggle ~= false and final_pattern == texts[label] then
+    M.clear(label)
+    return
+  end
+
+  reset_label(label)
+
+  local match_ids = vim.w.ex_hl_match_ids
+  match_ids[label] = vim.fn.matchadd(util.get_hl_group(label), final_pattern, label)
+  vim.w.ex_hl_match_ids = match_ids
+
+  texts[label] = final_pattern
+  vim.w.ex_hl_text = texts
+
+  local meta = vim.w.ex_hl_meta
+  meta[label] = {
+    kind = opts.kind or 'pattern',
+    source = opts.source or pattern,
+  }
+  vim.w.ex_hl_meta = meta
+
+  local reg_pattern = pattern
+  if label == 2 or label == 4 then
+    reg_pattern = util.strip_word_boundaries(pattern)
+  end
+  vim.fn.setreg(util.reg_map[label], reg_pattern)
 end
 
 ---Define highlight groups
@@ -62,13 +111,31 @@ function M.highlight_word(label)
     return
   end
 
+  init_win_state()
+
   local word = util.get_cword()
   if word == '' then
     return
   end
 
+  local meta = vim.w.ex_hl_meta
+  local current = meta[label]
+  if current and current.kind == 'word' and current.source == word then
+    M.clear(label)
+    return
+  end
+
+  for i = 1, 4 do
+    if i ~= label then
+      local other = meta[i]
+      if other and other.kind == 'word' and other.source == word then
+        reset_label(i)
+      end
+    end
+  end
+
   local pattern = util.make_word_pattern(word)
-  M.highlight_text(label, pattern)
+  apply_highlight(label, pattern, { kind = 'word', source = word, toggle = false })
 end
 
 ---Highlight text with pattern
@@ -81,38 +148,7 @@ function M.highlight_text(label, pattern)
   end
 
   init_win_state()
-
-  -- If no pattern, cancel highlight
-  if pattern == '' then
-    M.clear(label)
-    return
-  end
-
-  -- Add case-insensitivity if no uppercase
-  local final_pattern = util.maybe_add_casefold(pattern)
-  local texts = vim.w.ex_hl_text
-
-  -- Toggle off if same pattern
-  if final_pattern == texts[label] then
-    M.clear(label)
-    return
-  end
-
-  -- Clear existing and create new
-  reset_label(label)
-  local match_ids = vim.w.ex_hl_match_ids
-  match_ids[label] = vim.fn.matchadd(util.get_hl_group(label), final_pattern, label)
-  vim.w.ex_hl_match_ids = match_ids
-  texts[label] = final_pattern
-  vim.w.ex_hl_text = texts
-
-  -- Store in register
-  local reg_pattern = pattern
-  -- Labels 2 and 4: strip word boundaries for register
-  if label == 2 or label == 4 then
-    reg_pattern = util.strip_word_boundaries(pattern)
-  end
-  vim.fn.setreg(util.reg_map[label], reg_pattern)
+  apply_highlight(label, pattern, { kind = 'pattern', source = pattern })
 end
 
 ---Highlight visual selection range
@@ -166,7 +202,7 @@ function M.highlight_range(label)
     pattern = string.format('\\%%>%dl\\%%<%dl', start_line - 1, end_line + 1)
   end
 
-  M.highlight_text(label, pattern)
+  apply_highlight(label, pattern, { kind = 'range', source = pattern, toggle = false })
 end
 
 ---Clear highlight for a label

@@ -52,20 +52,14 @@ end, { desc = 'EasyHL: Cancel all highlights' })
 --------------------------------------------------------------------------------
 
 if vim.g.easyhl_no_mappings ~= 1 then
-  -- Alt-1 to Alt-4: Highlight word (normal mode)
+  -- Leader-1 to Leader-4: highlight/toggle word in normal mode, set range in visual mode
   for i = 1, 4 do
-    vim.keymap.set('n', string.format('<M-%d>', i), string.format('<Plug>(EasyhlWord%d)', i), { remap = true })
-    vim.keymap.set('v', string.format('<M-%d>', i), string.format('<Plug>(EasyhlRange%d)', i), { remap = true })
+    vim.keymap.set('n', string.format('<Leader>%d', i), string.format('<Plug>(EasyhlWord%d)', i), { remap = true })
+    vim.keymap.set('v', string.format('<Leader>%d', i), string.format('<Plug>(EasyhlRange%d)', i), { remap = true })
   end
 
-  -- Alt-0: Clear all
-  vim.keymap.set('n', '<M-0>', '<Plug>(EasyhlCancelAll)', { remap = true })
-
-  -- Leader-0 to Leader-4: Cancel highlights
+  -- Leader-0: Clear all
   vim.keymap.set('n', '<Leader>0', '<Plug>(EasyhlCancelAll)', { remap = true })
-  for i = 1, 4 do
-    vim.keymap.set('n', string.format('<Leader>%d', i), string.format('<Plug>(EasyhlCancel%d)', i), { remap = true })
-  end
 
   -- Substitute mapping: replace Label1 with Label2
   vim.keymap.set('n', '<Leader>sub', ':%s/<c-r>q/<c-r>w/g<CR><c-o>', { silent = true })

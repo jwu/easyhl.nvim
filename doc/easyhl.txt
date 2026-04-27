@@ -44,17 +44,24 @@ Features:
 
 Highlight words under cursor ~
 
-Move your cursor to the word you want to highlight. Press <Alt-1>, <Alt-2>,
-<Alt-3>, or <Alt-4>.
+Move your cursor to the word you want to highlight. Press <Leader>1,
+<Leader>2, <Leader>3, or <Leader>4.
+
+Pressing the same label on the same word toggles that word highlight off.
+Pressing a different label on the same word moves the word highlight to the
+new label.
 
 Highlight visual selection ~
 
-Select text in visual mode and press <Alt-1>, <Alt-2>, <Alt-3>, or <Alt-4>.
+Select text in visual mode and press <Leader>1, <Leader>2, <Leader>3, or
+<Leader>4.
+
+Visual highlights always overwrite the target label and do not toggle.
 
 Cancel highlight words ~
 
-Press <Leader>1, <Leader>2, <Leader>3, or <Leader>4 to cancel individual
-highlights. Press <Leader>0 or <Alt-0> to cancel all highlights.
+Press <Leader>0 to cancel all highlights. For individual labels, use
+:EasyhlCancel {label} or custom mappings to <Plug>(EasyhlCancel1-4).
 
 Replace highlighted words ~
 
@@ -110,16 +117,14 @@ KEY MAPPINGS                                                 *easyhl-mappings*
 
 Default key mappings (can be disabled with `g:easyhl_no_mappings = 1`):
 
-<Alt-1>        Highlight current word with label 1 (toggle)
-<Alt-2>        Highlight current word with label 2 (toggle)
-<Alt-3>        Highlight current word with label 3 (toggle)
-<Alt-4>        Highlight current word with label 4 (toggle)
-<Alt-0>        Cancel all highlights
-
-<Leader>1      Cancel highlight label 1
-<Leader>2      Cancel highlight label 2
-<Leader>3      Cancel highlight label 3
-<Leader>4      Cancel highlight label 4
+<Leader>1      Highlight/toggle current word with label 1 in normal mode;
+               highlight visual selection with label 1 in visual mode
+<Leader>2      Highlight/toggle current word with label 2 in normal mode;
+               highlight visual selection with label 2 in visual mode
+<Leader>3      Highlight/toggle current word with label 3 in normal mode;
+               highlight visual selection with label 3 in visual mode
+<Leader>4      Highlight/toggle current word with label 4 in normal mode;
+               highlight visual selection with label 4 in visual mode
 <Leader>0      Cancel all highlights
 
 <Leader>sub    Replace label 1 words with label 2 words (normal and visual mode)
@@ -130,10 +135,10 @@ Default key mappings (can be disabled with `g:easyhl_no_mappings = 1`):
 Use these mappings to create custom keybindings:
 
 Normal Mode ~
-    <Plug>(EasyhlWord1)     Highlight word with label 1
-    <Plug>(EasyhlWord2)     Highlight word with label 2
-    <Plug>(EasyhlWord3)     Highlight word with label 3
-    <Plug>(EasyhlWord4)     Highlight word with label 4
+    <Plug>(EasyhlWord1)     Highlight/toggle word with label 1
+    <Plug>(EasyhlWord2)     Highlight/toggle word with label 2
+    <Plug>(EasyhlWord3)     Highlight/toggle word with label 3
+    <Plug>(EasyhlWord4)     Highlight/toggle word with label 4
     <Plug>(EasyhlCancel1)   Cancel highlight label 1
     <Plug>(EasyhlCancel2)   Cancel highlight label 2
     <Plug>(EasyhlCancel3)   Cancel highlight label 3

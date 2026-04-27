@@ -44,17 +44,20 @@ Plug 'jwu/easyhl.nvim'
 ### Highlight Words
 
 Move your cursor to a word and press:
-- `<Alt-1>` through `<Alt-4>` to highlight with different colors
+- `<Leader>1` through `<Leader>4` to highlight with different colors
+- Press the same mapping again on the same word to toggle that label off
+- Press a different label on the same word to move the word highlight to that label
 
 ### Highlight Visual Selection
 
 Select text in visual mode and press:
-- `<Alt-1>` through `<Alt-4>` to highlight the selection
+- `<Leader>1` through `<Leader>4` to highlight the selection
+- Visual highlights always overwrite the target label and do not toggle
 
 ### Cancel Highlights
 
-- `<Leader>1` through `<Leader>4` to cancel individual labels
-- `<Leader>0` or `<Alt-0>` to cancel all highlights
+- `<Leader>0` to cancel all highlights
+- Use `:Easyhl cancel {label}` or `<Plug>(EasyhlCancel1-4)` for individual cancellation
 
 ### Replace Words
 
@@ -97,7 +100,7 @@ Available `<Plug>` mappings:
 
 | Mapping | Mode | Description |
 |---------|------|-------------|
-| `<Plug>(EasyhlWord1-4)` | Normal | Highlight word |
+| `<Plug>(EasyhlWord1-4)` | Normal | Highlight/toggle word |
 | `<Plug>(EasyhlRange1-4)` | Visual | Highlight selection |
 | `<Plug>(EasyhlCancel1-4)` | Normal | Cancel label |
 | `<Plug>(EasyhlCancelAll)` | Normal | Cancel all |
@@ -139,6 +142,18 @@ easyhl.clear_all()  -- Clear all
 
 -- Get current pattern
 local pattern = easyhl.get_hl_text(1)
+```
+
+## Development
+
+### Tests
+
+This project includes `busted` specs under `tests/`.
+
+If you have `busted` installed, run:
+
+```sh
+busted tests
 ```
 
 ## Health Check
