@@ -2,6 +2,8 @@
 
 A Neovim plugin for temporary, window-local highlighting of words, visual selections, and patterns.
 
+![](easyhl-demo.gif)
+
 ## Features
 
 - Highlight words under cursor with 4 distinct color labels
