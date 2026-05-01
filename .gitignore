@@ -13,15 +13,15 @@ profile
 PLBlocks.framework/*
 *.pbxuser
 *.mode1v3
-*~.nib/ 
-*.perspective 
+*~.nib/
+*.perspective
 *.perspectivev3
 xcuserdata/
 
 # gcc files
 *.gch
 
-# exvim files 
+# exvim files
 *.err
 *.exvim
 *.vimentry
@@ -33,3 +33,4 @@ quick_gen_project_*_autogen.sh
 
 # project files
 doc/tags
+demo/
