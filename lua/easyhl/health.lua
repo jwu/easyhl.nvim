@@ -1,7 +1,7 @@
 local M = {}
 
 function M.check()
-  vim.health.start('easyhl')
+  vim.health.start 'easyhl'
 
   -- Check Neovim version
   local v = vim.version()
@@ -9,9 +9,9 @@ function M.check()
 
   -- Check if version meets minimum requirement (0.11)
   if vim.version.lt(v, { 0, 11, 0 }) then
-    vim.health.warn('EasyHL requires Neovim 0.11+. Some features may not work correctly.')
+    vim.health.warn 'EasyHL requires Neovim 0.11+. Some features may not work correctly.'
   else
-    vim.health.ok('Neovim version requirement satisfied (0.11+)')
+    vim.health.ok 'Neovim version requirement satisfied (0.11+)'
   end
 
   -- Check highlight groups

@@ -6,7 +6,7 @@ package.path = table.concat({
   package.path,
 }, ';')
 
-local mock_vim = require('tests.helpers.mock_vim')
+local mock_vim = require 'tests.helpers.mock_vim'
 
 describe('easyhl.highlight', function()
   local highlight
@@ -15,7 +15,7 @@ describe('easyhl.highlight', function()
   local function reload_modules()
     package.loaded['easyhl.highlight'] = nil
     package.loaded['easyhl.util'] = nil
-    highlight = require('easyhl.highlight')
+    highlight = require 'easyhl.highlight'
   end
 
   before_each(function()

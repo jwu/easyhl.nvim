@@ -1,4 +1,4 @@
-local util = require('easyhl.util')
+local util = require 'easyhl.util'
 
 local M = {}
 
@@ -287,8 +287,8 @@ function M.highlight_range(label)
   if visual_mode:sub(1, 1) == 'n' then
     visual_mode = vim.fn.visualmode()
   end
-  local start_pos = vim.fn.getpos('v')
-  local end_pos = vim.fn.getpos('.')
+  local start_pos = vim.fn.getpos 'v'
+  local end_pos = vim.fn.getpos '.'
   local start_line = start_pos[2]
   local end_line = end_pos[2]
   local start_col = start_pos[3]
@@ -305,12 +305,22 @@ function M.highlight_range(label)
     apply_pattern_highlight(label, pattern, { kind = 'range', source = pattern, toggle = false })
   elseif visual_mode == '\022' then
     local positions, text = build_blockwise_positions(start_line, start_col, end_line, end_col)
-    apply_pos_highlight(label, positions, { kind = 'range', source = serialize_positions(positions), reg_pattern = text })
+    apply_pos_highlight(
+      label,
+      positions,
+      { kind = 'range', source = serialize_positions(positions), reg_pattern = text }
+    )
   elseif start_line ~= end_line then
-    local positions, text = build_charwise_multiline_positions(start_line, start_col, end_line, end_col)
-    apply_pos_highlight(label, positions, { kind = 'range', source = serialize_positions(positions), reg_pattern = text })
+    local positions, text =
+      build_charwise_multiline_positions(start_line, start_col, end_line, end_col)
+    apply_pos_highlight(
+      label,
+      positions,
+      { kind = 'range', source = serialize_positions(positions), reg_pattern = text }
+    )
   else
-    local ok, chunks = pcall(vim.api.nvim_buf_get_text, 0, start_line - 1, start_col - 1, end_line - 1, end_col, {})
+    local ok, chunks =
+      pcall(vim.api.nvim_buf_get_text, 0, start_line - 1, start_col - 1, end_line - 1, end_col, {})
     local text = ok and table.concat(chunks, '\n') or ''
 
     if text ~= '' then
@@ -331,7 +341,7 @@ function M.highlight_range(label)
   end
 
   if vim.api and vim.api.nvim_input then
-    vim.api.nvim_input('<Esc>')
+    vim.api.nvim_input '<Esc>'
   end
 end
 

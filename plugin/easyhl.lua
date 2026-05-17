@@ -1,7 +1,7 @@
 -- EasyHL Plugin Entry
 -- Commands, autocmds, and <Plug> mappings
 
-local highlight = require('easyhl.highlight')
+local highlight = require 'easyhl.highlight'
 
 -- Define highlights on load and on colorscheme change
 highlight.define_highlights()
@@ -35,7 +35,7 @@ for i = 1, 4 do
 
   -- Direct pattern highlight commands
   vim.keymap.set('n', string.format('<Plug>(EasyhlHL%d)', i), function()
-    local pattern = vim.fn.input('Pattern: ')
+    local pattern = vim.fn.input 'Pattern: '
     if pattern ~= '' then
       require('easyhl').highlight_text(i, pattern)
     end
@@ -54,8 +54,18 @@ end, { desc = 'EasyHL: Cancel all highlights' })
 if vim.g.easyhl_no_mappings ~= 1 then
   -- Leader-1 to Leader-4: highlight/toggle word in normal mode, set range in visual mode
   for i = 1, 4 do
-    vim.keymap.set('n', string.format('<Leader>%d', i), string.format('<Plug>(EasyhlWord%d)', i), { remap = true })
-    vim.keymap.set('v', string.format('<Leader>%d', i), string.format('<Plug>(EasyhlRange%d)', i), { remap = true })
+    vim.keymap.set(
+      'n',
+      string.format('<Leader>%d', i),
+      string.format('<Plug>(EasyhlWord%d)', i),
+      { remap = true }
+    )
+    vim.keymap.set(
+      'v',
+      string.format('<Leader>%d', i),
+      string.format('<Plug>(EasyhlRange%d)', i),
+      { remap = true }
+    )
   end
 
   -- Leader-0: Clear all
@@ -96,7 +106,10 @@ end
 vim.api.nvim_create_user_command('Easyhl', function(opts)
   local args = opts.fargs
   if #args < 1 then
-    vim.notify('EasyHL: Usage: Easyhl {word|range|cancel|hl1-4} [label] [pattern]', vim.log.levels.ERROR)
+    vim.notify(
+      'EasyHL: Usage: Easyhl {word|range|cancel|hl1-4} [label] [pattern]',
+      vim.log.levels.ERROR
+    )
     return
   end
 
@@ -111,7 +124,7 @@ vim.api.nvim_create_user_command('Easyhl', function(opts)
   elseif subcmd == 'cancel' then
     local label = tonumber(args[2]) or 0
     require('easyhl').clear(label)
-  elseif subcmd:match('^hl[1-4]$') then
+  elseif subcmd:match '^hl[1-4]$' then
     local label = tonumber(subcmd:sub(3))
     local pattern = args[2] or ''
     require('easyhl').highlight_text(label, pattern)
