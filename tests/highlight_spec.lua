@@ -18,6 +18,18 @@ describe('easyhl.highlight', function()
     highlight = require 'easyhl.highlight'
   end
 
+  local function extmark_positions()
+    local positions = {}
+    for _, extmark in ipairs(env.state.extmarks) do
+      positions[#positions + 1] = {
+        extmark.row + 1,
+        extmark.col + 1,
+        extmark.opts.end_col - extmark.col,
+      }
+    end
+    return positions
+  end
+
   before_each(function()
     env = mock_vim.new()
     _G.vim = env.vim
@@ -129,12 +141,11 @@ describe('easyhl.highlight', function()
 
     highlight.highlight_range(1)
 
-    local match = env.state.pos_matches[env.vim.w.ex_hl_match_ids[1]]
     assert.are.same({
       { 1, 7, 4 },
       { 2, 1, 11 },
       { 3, 1, 5 },
-    }, match.positions)
+    }, extmark_positions())
   end)
 
   it('uses precise positions for blockwise selections', function()
@@ -149,12 +160,11 @@ describe('easyhl.highlight', function()
 
     highlight.highlight_range(1)
 
-    local match = env.state.pos_matches[env.vim.w.ex_hl_match_ids[1]]
     assert.are.same({
       { 1, 2, 3 },
       { 2, 2, 3 },
       { 3, 2, 3 },
-    }, match.positions)
+    }, extmark_positions())
   end)
 
   it('reads the current visual selection instead of reusing the previous one', function()
@@ -227,13 +237,28 @@ describe('easyhl.highlight', function()
     assert.are.equal('\\Va\\\\b', env.state.registers.q)
   end)
 
+  it('renders pattern highlights with extmarks', function()
+    env.state.buffer_text = { 'TODO one TODO two' }
+
+    highlight.highlight_text(1, 'TODO')
+
+    assert.are.same({
+      { 1, 1, 4 },
+      { 1, 10, 4 },
+    }, extmark_positions())
+  end)
+
   it('keeps pattern highlighting toggle behavior', function()
+    env.state.buffer_text = { 'TODO' }
+
     highlight.highlight_text(1, 'TODO')
     assert.are.equal('TODO', highlight.get_hl_text(1))
     assert.are.equal('TODO', env.state.registers.q)
+    assert.are.same({ { 1, 1, 4 } }, extmark_positions())
 
     highlight.highlight_text(1, 'TODO')
     assert.are.equal('', highlight.get_hl_text(1))
     assert.are.equal('', env.state.registers.q)
+    assert.are.same({}, extmark_positions())
   end)
 end)

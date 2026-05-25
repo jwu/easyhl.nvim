@@ -1,11 +1,11 @@
 local M = {}
 
 ---@param opts? table
----@return { vim: table, state: table }
+---@return { vim: table, state: table, render: function }
 function M.new(opts)
   opts = opts or {}
 
-  local next_match_id = 0
+  local next_extmark_id = 0
   local state = {
     current_word = opts.current_word or '',
     visual_text = opts.visual_text or '',
@@ -23,9 +23,8 @@ function M.new(opts)
     },
     registers = {},
     register_types = {},
-    matches = {},
-    pos_matches = {},
-    deleted_matches = {},
+    extmarks = {},
+    decoration_providers = {},
     notifications = {},
     commands = {},
     inputs = {},
@@ -43,14 +42,28 @@ function M.new(opts)
     notify = function(msg, level)
       table.insert(state.notifications, { msg = msg, level = level })
     end,
-    cmd = function(cmd)
-      table.insert(state.commands, cmd)
-      if cmd == 'silent normal! gv"ay' then
-        state.registers.a = state.visual_text
-        state.register_types.a = 'v'
-      end
-    end,
   }
+
+  local function render()
+    state.extmarks = {}
+    next_extmark_id = 0
+
+    for ns, provider in pairs(state.decoration_providers) do
+      if provider.on_win then
+        provider.on_win(ns, 0, 0, 0, #state.buffer_text)
+      end
+    end
+  end
+
+  vim.cmd = function(cmd)
+    table.insert(state.commands, cmd)
+    if cmd == 'silent normal! gv"ay' then
+      state.registers.a = state.visual_text
+      state.register_types.a = 'v'
+    elseif cmd == 'redraw' then
+      render()
+    end
+  end
 
   function vim.fn.expand(expr)
     if expr == '<cword>' then
@@ -67,31 +80,64 @@ function M.new(opts)
     return ''
   end
 
-  function vim.fn.matchadd(group, pattern, priority)
-    next_match_id = next_match_id + 1
-    state.matches[next_match_id] = {
-      group = group,
-      pattern = pattern,
-      priority = priority,
-    }
-    return next_match_id
+  local function unescape_very_magic_literal(text)
+    return text:gsub('\\\\', '\\')
   end
 
-  function vim.fn.matchaddpos(group, positions, priority)
-    next_match_id = next_match_id + 1
-    state.pos_matches[next_match_id] = {
-      group = group,
-      positions = positions,
-      priority = priority,
-    }
-    return next_match_id
+  local function find_with_case(line, needle, start_col, ignorecase)
+    if ignorecase then
+      local haystack = line:lower()
+      local lowered = needle:lower()
+      return haystack:find(lowered, start_col + 1, true)
+    end
+
+    return line:find(needle, start_col + 1, true)
   end
 
-  function vim.fn.matchdelete(id)
-    state.deleted_matches[id] = true
-    state.matches[id] = nil
-    state.pos_matches[id] = nil
-    return 1
+  function vim.fn.matchstrpos(line, pattern, start_col)
+    start_col = start_col or 0
+
+    local ignorecase = false
+    if pattern:sub(1, 2) == '\\c' then
+      ignorecase = true
+      pattern = pattern:sub(3)
+    end
+
+    if pattern:sub(1, 2) == '\\V' then
+      local needle = unescape_very_magic_literal(pattern:sub(3))
+      local start_idx, end_idx = find_with_case(line, needle, start_col, ignorecase)
+      if not start_idx then
+        return { '', -1, -1 }
+      end
+      return { line:sub(start_idx, end_idx), start_idx - 1, end_idx }
+    end
+
+    local word = pattern:match '^\\<\\C(.*)\\>$' or pattern:match '^\\<(.*)\\>$'
+    if word then
+      local search_start = start_col
+      while search_start <= #line do
+        local start_idx, end_idx = find_with_case(line, word, search_start, ignorecase)
+        if not start_idx then
+          return { '', -1, -1 }
+        end
+
+        local before = start_idx == 1 and '' or line:sub(start_idx - 1, start_idx - 1)
+        local after = end_idx == #line and '' or line:sub(end_idx + 1, end_idx + 1)
+        local left_ok = before == '' or not before:match '[%w_]'
+        local right_ok = after == '' or not after:match '[%w_]'
+        if left_ok and right_ok then
+          return { line:sub(start_idx, end_idx), start_idx - 1, end_idx }
+        end
+
+        search_start = end_idx
+      end
+    end
+
+    local start_idx, end_idx = find_with_case(line, pattern, start_col, ignorecase)
+    if not start_idx then
+      return { '', -1, -1 }
+    end
+    return { line:sub(start_idx, end_idx), start_idx - 1, end_idx }
   end
 
   function vim.fn.setreg(reg, value, regtype)
@@ -137,6 +183,34 @@ function M.new(opts)
     return state.mode or state.visual_mode
   end
 
+  function vim.api.nvim_create_namespace(name)
+    state.namespace = name
+    return 1
+  end
+
+  function vim.api.nvim_set_decoration_provider(ns, provider)
+    state.decoration_providers[ns] = provider
+  end
+
+  function vim.api.nvim_win_get_var(_, name)
+    local value = vim.w[name]
+    if value == nil then
+      error('Key not found: ' .. name)
+    end
+    return value
+  end
+
+  function vim.api.nvim_buf_set_extmark(_, ns, row, col, extmark_opts)
+    next_extmark_id = next_extmark_id + 1
+    state.extmarks[next_extmark_id] = {
+      ns = ns,
+      row = row,
+      col = col,
+      opts = extmark_opts,
+    }
+    return next_extmark_id
+  end
+
   function vim.api.nvim_input(keys)
     table.insert(state.inputs, keys)
   end
@@ -171,6 +245,7 @@ function M.new(opts)
   return {
     vim = vim,
     state = state,
+    render = render,
   }
 end
 

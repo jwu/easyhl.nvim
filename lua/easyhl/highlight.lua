@@ -2,13 +2,173 @@ local util = require 'easyhl.util'
 
 local M = {}
 
+local ns = vim.api.nvim_create_namespace 'easyhl'
+
+---Request a redraw so the decoration provider can refresh ephemeral extmarks.
+local function request_redraw()
+  if vim.cmd then
+    pcall(vim.cmd, 'redraw')
+  end
+end
+
+---@param winid integer
+---@param name string
+---@return any
+local function get_win_var(winid, name)
+  if vim.api.nvim_win_get_var then
+    local ok, value = pcall(vim.api.nvim_win_get_var, winid, name)
+    if ok then
+      return value
+    end
+    return nil
+  end
+
+  return vim.w[name]
+end
+
+---@param label number
+---@param end_row integer
+---@param end_col integer
+---@return table
+local function extmark_opts(label, end_row, end_col)
+  return {
+    end_row = end_row,
+    end_col = end_col,
+    hl_group = util.get_hl_group(label),
+    priority = label,
+    strict = false,
+    ephemeral = true,
+  }
+end
+
+---@param bufnr integer
+---@param label number
+---@param row integer
+---@param col integer
+---@param end_row integer
+---@param end_col integer
+local function set_range_extmark(bufnr, label, row, col, end_row, end_col)
+  if end_row < row or (end_row == row and end_col <= col) then
+    return
+  end
+
+  pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, col, extmark_opts(label, end_row, end_col))
+end
+
+---@param bufnr integer
+---@param label number
+---@param positions integer[][]
+---@param topline integer
+---@param botline integer
+local function render_positions(bufnr, label, positions, topline, botline)
+  for _, pos in ipairs(positions) do
+    local row = pos[1] - 1
+    local col = pos[2] - 1
+    local len = pos[3]
+
+    if len > 0 and row >= topline and row < botline then
+      set_range_extmark(bufnr, label, row, col, row, col + len)
+    end
+  end
+end
+
+---@param bufnr integer
+---@param label number
+---@param start_line integer
+---@param end_line integer
+---@param topline integer
+---@param botline integer
+local function render_line_range(bufnr, label, start_line, end_line, topline, botline)
+  local start_row = math.max(start_line - 1, topline)
+  local end_row = math.min(end_line, botline)
+
+  if start_row >= end_row then
+    return
+  end
+
+  local lines = vim.api.nvim_buf_get_lines(bufnr, start_row, end_row, false)
+  for index, line in ipairs(lines) do
+    local row = start_row + index - 1
+    local opts = extmark_opts(label, row, #line)
+    opts.hl_eol = true
+    opts.line_hl_group = util.get_hl_group(label)
+    pcall(vim.api.nvim_buf_set_extmark, bufnr, ns, row, 0, opts)
+  end
+end
+
+---@param line string
+---@param pattern string
+---@param start_col integer
+---@return string, integer, integer
+local function match_line(line, pattern, start_col)
+  local ok, result = pcall(vim.fn.matchstrpos, line, pattern, start_col)
+  if not ok or type(result) ~= 'table' then
+    return '', -1, -1
+  end
+
+  return result[1] or '', result[2] or -1, result[3] or -1
+end
+
+---@param bufnr integer
+---@param label number
+---@param pattern string
+---@param topline integer
+---@param botline integer
+local function render_pattern(bufnr, label, pattern, topline, botline)
+  local lines = vim.api.nvim_buf_get_lines(bufnr, topline, botline, false)
+
+  for index, line in ipairs(lines) do
+    local row = topline + index - 1
+    local start_col = 0
+
+    while start_col <= #line do
+      local _, match_start, match_end = match_line(line, pattern, start_col)
+      if match_start < 0 or match_end < 0 then
+        break
+      end
+
+      if match_end > match_start then
+        set_range_extmark(bufnr, label, row, match_start, row, match_end)
+      end
+
+      if match_end <= start_col then
+        start_col = start_col + 1
+      else
+        start_col = match_end
+      end
+    end
+  end
+end
+
+vim.api.nvim_set_decoration_provider(ns, {
+  on_win = function(_, winid, bufnr, topline, botline)
+    local specs = get_win_var(winid, 'ex_hl_specs')
+    if type(specs) ~= 'table' then
+      return
+    end
+
+    for label = 1, 4 do
+      local spec = specs[label]
+      if type(spec) == 'table' then
+        if spec.type == 'positions' then
+          render_positions(bufnr, label, spec.positions or {}, topline, botline)
+        elseif spec.type == 'line_range' then
+          render_line_range(bufnr, label, spec.start_line, spec.end_line, topline, botline)
+        elseif spec.type == 'pattern' then
+          render_pattern(bufnr, label, spec.pattern, topline, botline)
+        end
+      end
+    end
+  end,
+})
+
 -- Window-local state storage
 -- Using vim.w for window-local variables
 
 ---Initialize window-local highlight state
 local function init_win_state()
-  if vim.w.ex_hl_match_ids == nil then
-    vim.w.ex_hl_match_ids = { 0, 0, 0, 0, 0 }
+  if vim.w.ex_hl_specs == nil then
+    vim.w.ex_hl_specs = { false, false, false, false, false }
   end
   if vim.w.ex_hl_text == nil then
     vim.w.ex_hl_text = { '', '', '', '', '' }
@@ -20,13 +180,11 @@ end
 
 ---Reset highlight for a label
 ---@param label number 1-4
-local function reset_label(label)
-  local match_ids = vim.w.ex_hl_match_ids
-  if match_ids and match_ids[label] and match_ids[label] ~= 0 then
-    pcall(vim.fn.matchdelete, match_ids[label])
-  end
-  match_ids[label] = 0
-  vim.w.ex_hl_match_ids = match_ids
+---@param redraw? boolean
+local function reset_label(label, redraw)
+  local specs = vim.w.ex_hl_specs
+  specs[label] = false
+  vim.w.ex_hl_specs = specs
 
   local texts = vim.w.ex_hl_text
   texts[label] = ''
@@ -37,6 +195,10 @@ local function reset_label(label)
   vim.w.ex_hl_meta = meta
 
   vim.fn.setreg(util.reg_map[label], '')
+
+  if redraw ~= false then
+    request_redraw()
+  end
 end
 
 ---@param start_line number
@@ -75,11 +237,14 @@ local function apply_pattern_highlight(label, pattern, opts)
     return
   end
 
-  reset_label(label)
+  reset_label(label, false)
 
-  local match_ids = vim.w.ex_hl_match_ids
-  match_ids[label] = vim.fn.matchadd(util.get_hl_group(label), final_pattern, label)
-  vim.w.ex_hl_match_ids = match_ids
+  local specs = vim.w.ex_hl_specs
+  specs[label] = {
+    type = 'pattern',
+    pattern = final_pattern,
+  }
+  vim.w.ex_hl_specs = specs
 
   texts[label] = final_pattern
   vim.w.ex_hl_text = texts
@@ -96,6 +261,39 @@ local function apply_pattern_highlight(label, pattern, opts)
     reg_pattern = util.strip_word_boundaries(reg_pattern)
   end
   vim.fn.setreg(util.reg_map[label], reg_pattern)
+
+  request_redraw()
+end
+
+---@param label number 1-4
+---@param start_line number
+---@param end_line number
+---@param pattern string
+local function apply_line_range_highlight(label, start_line, end_line, pattern)
+  reset_label(label, false)
+
+  local final_pattern = util.maybe_add_casefold(pattern)
+  local specs = vim.w.ex_hl_specs
+  specs[label] = {
+    type = 'line_range',
+    start_line = start_line,
+    end_line = end_line,
+  }
+  vim.w.ex_hl_specs = specs
+
+  local texts = vim.w.ex_hl_text
+  texts[label] = final_pattern
+  vim.w.ex_hl_text = texts
+
+  local meta = vim.w.ex_hl_meta
+  meta[label] = {
+    kind = 'range',
+    source = pattern,
+  }
+  vim.w.ex_hl_meta = meta
+
+  vim.fn.setreg(util.reg_map[label], pattern)
+  request_redraw()
 end
 
 ---@param label number 1-4
@@ -109,11 +307,14 @@ local function apply_pos_highlight(label, positions, opts)
     return
   end
 
-  reset_label(label)
+  reset_label(label, false)
 
-  local match_ids = vim.w.ex_hl_match_ids
-  match_ids[label] = vim.fn.matchaddpos(util.get_hl_group(label), positions, label)
-  vim.w.ex_hl_match_ids = match_ids
+  local specs = vim.w.ex_hl_specs
+  specs[label] = {
+    type = 'positions',
+    positions = positions,
+  }
+  vim.w.ex_hl_specs = specs
 
   local texts = vim.w.ex_hl_text
   texts[label] = opts.source or serialize_positions(positions)
@@ -128,6 +329,8 @@ local function apply_pos_highlight(label, positions, opts)
 
   local reg_pattern = opts.reg_pattern or ''
   vim.fn.setreg(util.reg_map[label], reg_pattern)
+
+  request_redraw()
 end
 
 ---@param start_line number
@@ -251,7 +454,7 @@ function M.highlight_word(label)
     if i ~= label then
       local other = meta[i]
       if other and other.kind == 'word' and other.source == word then
-        reset_label(i)
+        reset_label(i, false)
       end
     end
   end
@@ -302,7 +505,7 @@ function M.highlight_range(label)
 
   if visual_mode == 'V' then
     local pattern = string.format('\\%%>%dl\\%%<%dl', start_line - 1, end_line + 1)
-    apply_pattern_highlight(label, pattern, { kind = 'range', source = pattern, toggle = false })
+    apply_line_range_highlight(label, start_line, end_line, pattern)
   elseif visual_mode == '\022' then
     local positions, text = build_blockwise_positions(start_line, start_col, end_line, end_col)
     apply_pos_highlight(
@@ -352,8 +555,9 @@ function M.clear(label)
 
   if label == 0 then
     for i = 1, 4 do
-      reset_label(i)
+      reset_label(i, false)
     end
+    request_redraw()
   else
     if not util.is_valid_label(label) then
       vim.notify('EasyHL: Invalid label ' .. label .. '. Must be 0-4.', vim.log.levels.ERROR)
